@@ -24,6 +24,7 @@
     "googleapis": "^111.0.0",
     "next": "13.1.6",
     "next-auth": "^4.19.2",
+    "next-seo": "^5.15.0",
     "nookies": "^2.5.2",
     "phosphor-react": "^1.4.1",
     "prisma": "^4.10.1",
