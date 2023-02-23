@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
 import { NextApiRequest, NextApiResponse } from 'next'
 import dayjs from 'dayjs'
+import { getGoogleOAuthToken } from '@/lib/google'
+import { google } from 'googleapis'
 
 export default async function handle(
   req: NextApiRequest,
@@ -68,7 +70,27 @@ export default async function handle(
     },
   })
 
-  const availableTimes = possibleTimes.filter((time) => {
+  const calendar = google.calendar({
+    version: 'v3',
+    auth: await getGoogleOAuthToken(user.id),
+  })
+
+  const listEventsFromGoogleCalendar: any = await calendar.events.list({
+    calendarId: 'primary',
+  })
+
+  const datesHaveEventInGoogleCalendar =
+    listEventsFromGoogleCalendar.data.items.map((item: any) => {
+      if (item.start.dateTime) {
+        return item.start.dateTime
+      }
+      if (item.start.date) {
+        return item.start.date
+      }
+      return null
+    })
+
+  const availableTimesWithoutGoogleCalendar = possibleTimes.filter((time) => {
     const isTimeBlocked = blockedTimes.some(
       (blockedTime) => blockedTime.date.getHours() === time,
     )
@@ -78,5 +100,42 @@ export default async function handle(
     return !isTimeBlocked && !isTimeInPast
   })
 
+  const possibleHoursFromGoogleCalendar = datesHaveEventInGoogleCalendar.map(
+    (item: any) => {
+      const dateCalendarFromGoogleCalendar = dayjs(item).format('YYYY-MM-DD')
+      const hourCalendarFromGoogleCalendar = dayjs(item).format('HH')
+
+      const eventAtMomentOfDay =
+        date === dateCalendarFromGoogleCalendar &&
+        hourCalendarFromGoogleCalendar !== '00'
+          ? availableTimesWithoutGoogleCalendar.filter(
+              (item: any) => String(item) !== hourCalendarFromGoogleCalendar,
+            )
+          : null
+
+      const eventInAllDay =
+        date === dateCalendarFromGoogleCalendar &&
+        hourCalendarFromGoogleCalendar === '00' &&
+        []
+
+      const result = eventAtMomentOfDay || eventInAllDay
+
+      return result
+    },
+  )
+
+  const availableTimesArray =
+    possibleHoursFromGoogleCalendar.filter((item: any) => item !== false)
+      .length === 0
+      ? [availableTimesWithoutGoogleCalendar]
+      : possibleHoursFromGoogleCalendar.filter((item: any) => item !== false)
+
+  console.log(possibleHoursFromGoogleCalendar)
+  console.log(availableTimesArray)
+
+  const availableTimes =
+    availableTimesArray.length > 0 ? availableTimesArray[0] : []
+
+  console.log(availableTimes, possibleTimes)
   return res.json({ possibleTimes, availableTimes })
 }
